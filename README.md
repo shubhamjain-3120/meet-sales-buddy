@@ -23,6 +23,8 @@ npm run build
 
 Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the `extension/` folder. Repeat on your partner's computer. Open the extension's toolbar icon for setup. Rebuild and reload the extension after code changes.
 
+If an agent's browser tool blocks Chrome internal pages or extension installation, the owner must perform those steps. The agent can prepare the built folder and private setup details locally; it must respect its tool's restrictions.
+
 ## One-time Ably setup (one of you)
 
 1. Create an app in your [Ably dashboard](https://ably.com/dashboard). Create an API key with **publish, subscribe, presence, and history** permissions, restricted to `sales-buddy:*` channels.
