@@ -1,0 +1,58 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createService, sign, verify } from "../auth/service.js";
+import { createTokenServer } from "../auth/server.js";
+
+const config = { apiKey: "app.key:ably-secret", sessionSecret: "a".repeat(32), setupKey: "b".repeat(32) };
+const decode = token => JSON.parse(Buffer.from(token.split(".")[1], "base64url"));
+test("private invite pairs two distinct identities with channel-scoped renewable tokens", () => {
+  let time = 1_800_000_000_000;
+  const service = createService({ ...config, now: () => time });
+  const host = service.create("Alex", config.setupKey);
+  const guest = service.join("Alex", host.inviteCode);
+  assert.equal(host.channel, guest.channel);
+  assert.notEqual(host.clientId, guest.clientId);
+  const token = service.token(guest.credential);
+  const data = decode(token);
+  assert.equal(data["x-ably-clientId"], guest.clientId);
+  assert.equal(data.exp - data.iat, 3600);
+  assert.deepEqual(JSON.parse(data["x-ably-capability"]), { [guest.channel]: ["publish", "subscribe", "presence", "history"] });
+  assert.equal(sign(data, "ably-secret", { kid: "app.key" }), token);
+  const another = service.create("Another pair", config.setupKey);
+  assert.notEqual(another.channel, host.channel);
+  time += 86400 * 1000 + 1;
+  assert.throws(() => service.join("Someone", host.inviteCode), /expired/);
+  assert.doesNotThrow(() => service.token(guest.credential));
+  assert.equal(service.join("Partner", service.invite(host.credential).inviteCode).channel, host.channel);
+  assert.throws(() => service.invite(guest.credential), /creator/);
+});
+test("forged invites, incorrect setup keys, member/invite substitution, and rotated secrets are rejected", () => {
+  const service = createService(config);
+  assert.throws(() => service.create("Alex", "wrong"), /setup key/);
+  assert.throws(() => service.create(" ", config.setupKey), /name/);
+  const host = service.create("Alex", config.setupKey);
+  const parts = host.inviteCode.split(".");
+  parts[1] = Buffer.from(JSON.stringify({ ...decode(host.inviteCode), room: "c".repeat(32) })).toString("base64url");
+  assert.throws(() => service.join("Partner", parts.join(".")), /Invalid credential/);
+  assert.throws(() => service.token(host.inviteCode), /member/);
+  assert.throws(() => service.join("Partner", host.credential), /invite/);
+  assert.throws(() => verify(host.credential, "different-secret"), /Invalid credential/);
+});
+test("HTTP service creates and joins a pairing, mints scoped tokens, and rejects malformed requests", async context => {
+  const server = createTokenServer(config);
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (route, body, bearer) => fetch(base + route, { method: "POST", headers: { "Content-Type": "application/json", ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) });
+  assert.equal((await post("/session", { name: "Alex" })).status, 400);
+  const host = await (await post("/session", { name: "Alex" }, config.setupKey)).json();
+  const guest = await (await post("/join", { name: "Shubham", inviteCode: host.inviteCode })).json();
+  const response = await post("/token", {}, guest.credential);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(decode(await response.text())["x-ably-clientId"], guest.clientId);
+  assert.equal((await post("/token", {}, "wrong")).status, 400);
+  assert.equal((await post("/join", null)).status, 400);
+  assert.equal((await fetch(base + "/token")).status, 404);
+  assert.equal((await fetch(base + "/join", { method: "POST", body: "x".repeat(9000) })).status, 413);
+});

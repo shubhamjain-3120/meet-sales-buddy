@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Meet Sales Buddy",
+  "version": "0.1.0",
+  "description": "A private claim button and message strip for your sales partner on Google Meet.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://meet.google.com/*"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "Set up Meet Sales Buddy"},
+  "options_ui": {"page": "options.html", "open_in_tab": true},
+  "content_scripts": [{
+    "matches": ["https://meet.google.com/*"],
+    "js": ["core.js", "strip.js", "realtime.bundle.js", "content.js"],
+    "run_at": "document_idle"
+  }]
+}
