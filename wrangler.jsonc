@@ -4,5 +4,12 @@
   "main": "auth/worker.js",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true
+  "workers_dev": true,
+  "rules": [{ "type": "Text", "globs": ["**/privacy.html"], "fallthrough": true }],
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "meet-sales-buddy-room",
+    "database_id": "4740daa7-ae40-4490-a742-0713acee0bec",
+    "migrations_dir": "auth/migrations"
+  }]
 }

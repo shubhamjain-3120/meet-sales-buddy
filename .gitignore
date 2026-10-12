@@ -9,6 +9,7 @@ artifacts/
 .dev.vars
 .dev.vars.*
 .wrangler/
+*.zip
 extension/realtime.bundle.js
 extension/ABLY-LICENSE.txt
 extension/LICENSE.txt

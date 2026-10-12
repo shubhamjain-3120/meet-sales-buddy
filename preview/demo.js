@@ -5,7 +5,7 @@
   const strip = SalesBuddyUI.mountStrip({
     name: "Shubham",
     onClaim() {},
-    onSend(text) { strip.model.message({ id: crypto.randomUUID(), name: "Shubham", text, own: true, delivered: true }); },
+    onSend(text) { strip.model.message({ id: crypto.randomUUID(), name: "Shubham", text, own: true }); },
     onSettings() { document.querySelector("#connection").click(); }
   });
   strip.model.connection(true, "Alex");

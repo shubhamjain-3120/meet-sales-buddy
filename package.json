@@ -1,19 +1,20 @@
 {
   "name": "meet-sales-buddy",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.js",
-    "auth": "node auth/server.js",
+    "auth": "node --env-file=.env auth/local-server.js",
     "auth:dev": "wrangler dev",
     "auth:deploy": "wrangler deploy",
     "verify:relay": "node --env-file=.env scripts/verify-relay.js",
     "preview": "node preview/server.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "playwright test",
-    "check": "node scripts/check.js"
+    "check": "node scripts/check.js",
+    "store:prepare": "node scripts/prepare-store.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",

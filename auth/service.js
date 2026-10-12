@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
 export function sign(payload, secret, extraHeader = {}) {
@@ -22,44 +22,110 @@ function validName(name) {
   if (typeof name !== "string" || !name.trim() || name.trim().length > 48) throw new Error("Enter a name of 1–48 characters.");
   return name.trim();
 }
-export function createService({ apiKey, sessionSecret, setupKey, now = Date.now }) {
+export class PublicError extends Error {
+  constructor(message, status = 400) { super(message); this.status = status; }
+}
+const hash = value => createHash("sha256").update(value).digest("hex");
+const id = () => randomBytes(16).toString("hex");
+export function channelFor(room, meeting) {
+  if (typeof meeting !== "string" || !/^(?:[a-z]{3}-[a-z]{4}-[a-z]{3}|lookup\/[^/]{1,100})$/.test(meeting)) throw new PublicError("Open a Google Meet call to connect.");
+  return `sales-buddy:${room}:${encodeURIComponent(meeting)}`;
+}
+export function createService({ apiKey, sessionSecret, setupKey, store, now = Date.now, revoke }) {
   if (!/^[\w-]+\.[\w-]+:[^:]+$/.test(apiKey ?? "")) throw new Error("Set ABLY_API_KEY to a full Ably API key.");
-  if (typeof sessionSecret !== "string" || sessionSecret.length < 32 || typeof setupKey !== "string" || setupKey.length < 24) throw new Error("Use a SESSION_SECRET of at least 32 characters and SETUP_KEY of at least 24 characters.");
+  if (typeof sessionSecret !== "string" || sessionSecret.length < 32 || typeof setupKey !== "string" || setupKey.length < 24 || !store) throw new Error("Configure the secrets and room database.");
   const [keyId, keySecret] = apiKey.split(":");
-  function member(payload) {
-    return { name: payload.name, clientId: `${payload.room}:${payload.role}`, channel: `sales-buddy:${payload.room}`, credential: sign(payload, sessionSecret) };
+  const safeName = name => { try { return validName(name); } catch (error) { throw new PublicError(error.message); } };
+  const serialize = row => ({ name: row.name, room: row.room_id, role: row.role, clientId: `${row.room_id}:${row.id}`, credential: sign({ type: "member", v: 2, room: row.room_id, id: row.id }, sessionSecret) });
+  function decoded(credential) {
+    try { return verify(credential, sessionSecret, now()); }
+    catch { throw new PublicError("Invalid membership. Set up or join again.", 401); }
   }
-  function readMember(credential) {
-    const payload = verify(credential, sessionSecret, now());
-    if (payload.type !== "member" || !["host", "guest"].includes(payload.role)) throw new Error("Invalid member credential.");
-    validName(payload.name);
-    return payload;
+  async function authenticate(credential) {
+    const payload = decoded(credential);
+    if (payload.type !== "member") throw new PublicError("Invalid member credential.", 401);
+    let row;
+    if (payload.v === 2 && /^[a-f0-9]{32}$/.test(payload.id ?? "")) row = await store.member(payload.id);
+    else if (["host", "guest"].includes(payload.role)) {
+      // Preserve existing two-person memberships without rotating server secrets.
+      const legacyHash = hash(credential);
+      row = await store.legacyMember(legacyHash);
+      if (!row) {
+        let room = await store.room();
+        if (!room && payload.role === "host") {
+          row = await store.bootstrap(payload.room, { id: id(), name: safeName(payload.name), created_at: now() }, legacyHash);
+          room = await store.room();
+        }
+        if (!room || room.id !== payload.room) throw new PublicError("Open the owner's settings first. If this is another old pairing, use a new room invite.", 409);
+        if (!row && payload.role === "guest") row = await store.adoptMember({ id: id(), room_id: room.id, name: safeName(payload.name), created_at: now() }, legacyHash);
+        if (!row && payload.role === "host") throw new PublicError("Recover your room using its setup key.", 409);
+      }
+    }
+    if (!row || row.room_id !== payload.room) throw new PublicError("Invalid membership. Join with a new invite.", 401);
+    if (row.revoked_at !== null) throw new PublicError("Your access was removed. Ask the owner for a new invite.", 403);
+    return row;
   }
-  function invite(payload) {
-    return sign({ type: "invite", room: payload.room, exp: Math.floor(now() / 1000) + 86400 }, sessionSecret);
+  async function owner(credential) {
+    const row = await authenticate(credential);
+    if (row.role !== "owner") throw new PublicError("Only the owner can manage this room.", 403);
+    return row;
   }
+  const revokeAccess = revoke ?? (async clientId => {
+    const response = await fetch(`https://main.realtime.ably.net/keys/${keyId}/revokeTokens`, {
+      method: "POST", signal: AbortSignal.timeout(10000), redirect: "error",
+      headers: { authorization: `Basic ${Buffer.from(apiKey).toString("base64")}`, "content-type": "application/json" },
+      body: JSON.stringify({ targets: [`clientId:${clientId}`], allowReauthMargin: false })
+    });
+    if (!response.ok) throw new Error("Live revocation unavailable.");
+  });
   return {
-    create(name, providedKey) {
-      const expected = Buffer.from(setupKey);
-      const actual = Buffer.from(providedKey ?? "");
-      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw new Error("Incorrect setup key.");
-      const payload = { type: "member", room: randomBytes(16).toString("hex"), role: "host", name: validName(name) };
-      return { ...member(payload), inviteCode: invite(payload) };
+    async create(name, providedKey, previousCredential) {
+      const expected = Buffer.from(setupKey), actual = Buffer.from(providedKey ?? "");
+      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw new PublicError("Incorrect setup key.");
+      const saved = await store.room();
+      if (saved) return serialize(await store.member(saved.owner_id));
+      if (previousCredential) {
+        const previous = decoded(previousCredential);
+        if (previous.type === "member" && previous.role === "host") return serialize(await authenticate(previousCredential));
+      }
+      return serialize(await store.bootstrap(id(), { id: id(), name: safeName(name), created_at: now() }));
     },
-    join(name, inviteCode) {
-      const payload = verify(inviteCode, sessionSecret, now());
-      if (payload.type !== "invite") throw new Error("Invalid invite.");
-      return member({ type: "member", room: payload.room, role: "guest", name: validName(name) });
+    async profile(credential) { return serialize(await authenticate(credential)); },
+    async join(name, inviteCode) {
+      if (typeof inviteCode !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(inviteCode)) throw new PublicError("Invalid invite. Ask the owner for a new code.");
+      const row = await store.redeem(hash(inviteCode), { id: id(), name: safeName(name), created_at: now() });
+      if (!row) throw new PublicError("This invite was used or revoked. Ask the owner for a new code.");
+      return serialize(row);
     },
-    invite(credential) {
-      const payload = readMember(credential);
-      if (payload.role !== "host") throw new Error("Only the creator can generate an invite.");
-      return { inviteCode: invite(payload) };
+    async invite(credential) {
+      const row = await owner(credential);
+      const code = randomBytes(32).toString("base64url");
+      const inviteId = id();
+      await store.createInvite({ id: inviteId, room_id: row.room_id, code_hash: hash(code), created_at: now() });
+      return { id: inviteId, inviteCode: code };
     },
-    token(credential) {
-      const payload = readMember(credential);
+    async dashboard(credential) {
+      const row = await authenticate(credential);
+      return row.role === "owner" ? store.dashboard(row.room_id) : { members: [], invites: [] };
+    },
+    async revokeInvite(credential, inviteId) {
+      const row = await owner(credential);
+      if (!await store.revokeInvite(row.room_id, inviteId, now())) throw new PublicError("Invite is missing or already used.");
+      return { revoked: true };
+    },
+    async remove(credential, memberId) {
+      const row = await owner(credential);
+      if (!await store.removeMember(row.room_id, memberId, now())) throw new PublicError("Member not found, or you tried to remove the owner.");
+      try {
+        await revokeAccess(`${row.room_id}:${memberId}`);
+        await store.finishRemoval(memberId);
+        return { removed: true, pending: false };
+      } catch { return { removed: true, pending: true }; }
+    },
+    async token(credential, meeting) {
+      const row = await authenticate(credential);
       const seconds = Math.floor(now() / 1000);
-      return sign({ iat: seconds, exp: seconds + 3600, "x-ably-clientId": `${payload.room}:${payload.role}`, "x-ably-capability": JSON.stringify({ [`sales-buddy:${payload.room}`]: ["publish", "subscribe", "presence", "history"] }) }, keySecret, { kid: keyId });
+      return sign({ iat: seconds, exp: seconds + 3600, "x-ably-clientId": `${row.room_id}:${row.id}`, "x-ably-capability": JSON.stringify({ [channelFor(row.room_id, meeting)]: ["publish", "subscribe", "presence", "history"] }) }, keySecret, { kid: keyId });
     }
   };
 }

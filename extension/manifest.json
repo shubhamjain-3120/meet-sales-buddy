@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Meet Sales Buddy",
-  "version": "0.1.0",
-  "description": "A private claim button and message strip for your sales partner on Google Meet.",
+  "version": "0.2.1",
+  "description": "Private claims and messages for your team on Google Meet.",
   "permissions": ["storage"],
   "host_permissions": ["https://meet.google.com/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],

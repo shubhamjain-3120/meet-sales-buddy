@@ -3,6 +3,7 @@
   let transport;
   let revision = 0;
   let active = false;
+  let meeting;
   async function rpc(message) {
     const result = await chrome.runtime.sendMessage(message);
     if (result.error) throw new Error(result.error);
@@ -15,9 +16,10 @@
     transport = null;
     strip = null;
     active = SalesBuddyCore.isMeetingLocation(location);
+    meeting = location.pathname;
     if (!active) return;
-    let session;
-    try { session = await rpc({ type: "get-session" }); } catch { return; }
+    let session, setupError;
+    try { session = await rpc({ type: "get-session" }); } catch (error) { setupError = error.message; }
     if (revision !== current) return;
     const localStrip = SalesBuddyUI.mountStrip({
       name: session?.name ?? "You",
@@ -27,7 +29,7 @@
       allowShortcut: () => SalesBuddyCore.isMeetingLocation(location)
     });
     strip = localStrip;
-    if (!session) { localStrip.model.error("Click the red dot to set up your pairing"); return; }
+    if (!session) { localStrip.model.error(setupError || "Click the red dot to set up your room"); return; }
     const currentTransport = SalesBuddyRealtime.connect({
       session, getToken: () => rpc({ type: "token" }),
       onConnection: (connected, partner) => localStrip.model.connection(connected, partner),
@@ -41,7 +43,7 @@
   }
   chrome.runtime.onMessage.addListener(message => { if (message.type === "session-changed") boot(); });
   // Meet can navigate into/out of a call without a full page load.
-  const routeTimer = setInterval(() => { if (active !== SalesBuddyCore.isMeetingLocation(location)) boot(); }, 1000);
+  const routeTimer = setInterval(() => { if (active !== SalesBuddyCore.isMeetingLocation(location) || meeting !== location.pathname) boot(); }, 1000);
   window.addEventListener("pagehide", () => { clearInterval(routeTimer); ++revision; transport?.close(); strip?.destroy(); });
   boot();
 })();

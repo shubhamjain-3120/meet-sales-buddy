@@ -12,7 +12,7 @@ test("one-row layout, own messages, and history", async ({ page }) => {
   const input = page.getByRole("textbox", { name: "Message your partner" });
   await input.fill("Let me handle the demo.");
   await input.press("Enter");
-  await expect(page.locator(".latest")).toHaveText("You: Let me handle the demo.Delivered");
+  await expect(page.locator(".latest")).toHaveText("You: Let me handle the demo.Sent");
   await expect(input).toHaveValue("");
   await page.getByRole("button", { name: "View message history" }).click();
   await expect(page.getByRole("region", { name: "Message history" })).toBeVisible();
@@ -103,8 +103,36 @@ test("partner disconnect makes dot red and disables claim; narrow layout stays i
   await expect(page.locator(".status")).not.toHaveClass(/online/);
   await expect(page.locator(".claim")).toBeDisabled();
   const strip = await page.locator(".strip").boundingBox();
-  expect(strip.height).toBe(48);
+  expect(strip.height).toBe(38);
   expect(strip.x + strip.width).toBeLessThanOrEqual(560);
+});
+
+test("compact strip leaves header edges clear and moves below the header in narrow windows", async ({ page }) => {
+  await page.evaluate(() => {
+    for (const [side, text] of [["left", "9:47 PM · abc-defg-hij"], ["right", "Participants · Notes"]]) {
+      const control = document.createElement("button");
+      control.dataset.headerControl = side;
+      control.textContent = text;
+      Object.assign(control.style, { position: "fixed", [side]: "12px", top: "8px", width: "196px", height: "44px" });
+      document.body.append(control);
+    }
+  });
+  for (const width of [1920, 1440, 1280, 1024, 960, 768, 560]) {
+    await page.setViewportSize({ width, height: 800 });
+    const strip = await page.locator(".strip").boundingBox();
+    expect(strip.height).toBe(38);
+    expect(strip.width).toBeLessThanOrEqual(720);
+    expect(strip.x).toBeGreaterThanOrEqual(12);
+    expect(strip.x + strip.width).toBeLessThanOrEqual(width - 12);
+    for (const side of ["left", "right"]) {
+      const control = await page.locator(`[data-header-control=${side}]`).boundingBox();
+      expect(strip.y >= control.y + control.height || strip.x >= control.x + control.width || strip.x + strip.width <= control.x).toBe(true);
+      await page.locator(`[data-header-control=${side}]`).click({ timeout: 2000 });
+    }
+    await expect(page.getByRole("textbox", { name: "Message your partner" })).toBeVisible();
+    const latest = await page.locator(".latest").boundingBox();
+    expect(latest.width).toBeGreaterThan(80);
+  }
 });
 
 test("a failed send preserves a newer draft, shows a failure, and never steals focus", async ({ page }) => {
@@ -165,7 +193,7 @@ test("messages arriving during a claim highlight once the claim clears; reduced 
   await page.clock.fastForward(5000);
   await expect(page.locator(".latest")).toHaveClass(/fresh/);
   await expect(page.locator(".latest")).toHaveCSS("animation-name", "none");
-  await expect(page.locator(".latest")).toHaveCSS("background-color", "rgb(52, 78, 103)");
+  await expect(page.locator(".latest")).toHaveCSS("background-color", "rgb(244, 206, 85)");
   await page.clock.fastForward(1500);
   await expect(page.locator(".latest")).not.toHaveClass(/fresh/);
 });

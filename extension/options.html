@@ -1,15 +1,27 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meet Sales Buddy · Setup</title><link rel="stylesheet" href="options.css"><script src="options.js" defer></script></head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meet Sales Buddy · Your room</title><link rel="stylesheet" href="options.css"><script src="options.js" defer></script></head>
 <body><main>
-  <h1>Meet Sales Buddy</h1><p class="intro">Set up once. Your private pairing stays ready for future calls.</p>
-  <section id="active" hidden><h2>Paired as <span id="active-name"></span></h2><p>Open a Google Meet call to use the strip.</p><button id="new-invite" type="button" hidden>Create partner invite</button><div id="invite-result" hidden><label for="invite-output">Private invite · valid for 24 hours</label><textarea id="invite-output" readonly rows="4"></textarea><button id="copy" type="button">Copy invite</button><p class="hint">Send this directly to your co-founder. Anyone with it can join as your partner.</p></div><button id="leave" type="button" class="secondary">Remove pairing from this browser</button></section>
+  <h1>Meet Sales Buddy</h1><p class="intro">One permanent room. Set up once, then invite the people you work with.</p>
+  <section id="active" hidden>
+    <h2><span id="active-heading">Joined as</span> <span id="active-name"></span></h2>
+    <p class="hint">Membership stays saved until the owner removes it. Open the same Google Meet call to coordinate.</p>
+    <div id="owner-controls" hidden>
+      <button id="new-invite" type="button">Create invite</button>
+      <div id="invite-result" hidden><label for="invite-output">Private invite · one person · no automatic expiry</label><textarea id="invite-output" readonly rows="4"></textarea><button id="copy" type="button">Copy invite</button><p class="hint">Send this directly to one person. It stays valid until used or revoked. The code is shown only when created.</p></div>
+      <h2>Invites</h2><div id="invites"></div>
+      <h2>Members</h2><div id="members"></div>
+    </div>
+    <button id="refresh" type="button" class="secondary">Refresh room</button>
+    <button id="leave" type="button" class="secondary">Remove setup from this browser</button>
+    <p id="recovery" class="hint" hidden>You can recover this same room using your setup key. Removing browser setup does not delete the room or its members.</p>
+  </section>
   <section id="setup">
-    <div class="tabs" role="group" aria-label="Pairing mode"><button id="create-mode" type="button" aria-pressed="true">Create pairing</button><button id="join-mode" type="button" aria-pressed="false">Join with invite</button></div>
+    <div class="tabs" role="group" aria-label="Setup mode"><button id="create-mode" type="button" aria-pressed="true">Set up my room</button><button id="join-mode" type="button" aria-pressed="false">Join with invite</button></div>
     <form id="pair-form">
       <label for="name">Your name</label><input id="name" maxlength="48" autocomplete="given-name" required placeholder="e.g. Shubham">
-      <div id="create-fields"><label for="endpoint">Token-service URL</label><input id="endpoint" type="url" placeholder="https://your-service.example.com" value="http://localhost:8787"><label for="setup-key">Setup key</label><input id="setup-key" type="password" autocomplete="off"><p class="hint">One of you sets up your own Ably app and token service. Use the setup key from that service, not your Ably API key. See the repo's README for setup.</p></div>
-      <div id="join-fields" hidden><label for="invite-input">Private invite</label><textarea id="invite-input" rows="4" placeholder="Paste the invite your partner sent"></textarea></div>
-      <button id="submit" type="submit">Create pairing</button>
+      <div id="create-fields"><label for="endpoint">Service URL</label><input id="endpoint" type="url" required value="https://meet-sales-buddy-tokens.jain31201522.workers.dev"><label for="setup-key">Owner setup key</label><input id="setup-key" type="password" autocomplete="off"><p class="hint">Use the setup key in your private local setup file. It sets up or recovers your existing room.</p></div>
+      <div id="join-fields" hidden><label for="invite-input">Private invite</label><textarea id="invite-input" rows="4" placeholder="Paste the complete invite code"></textarea></div>
+      <button id="submit" type="submit">Set up my room</button>
     </form>
   </section>
   <p id="status" role="status" aria-live="polite"></p>

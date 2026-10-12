@@ -8,3 +8,6 @@ button { font:inherit; border:1px solid #565f6d; border-radius:7px; padding:9px 
 #submit,#copy,#new-invite { margin-top:16px; } .secondary { background:transparent; margin-top:24px; font-size:13px; }
 .hint,.privacy { color:#a4adbc; font-size:13px; } .privacy { margin-top:24px; } #status { min-height:23px; color:#a9dcbc; } #status.error { color:#ffa8a5; }
 :focus-visible { outline:2px solid #a0b9eb; outline-offset:2px; }
+.row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid #41464f; }
+.row span { overflow-wrap:anywhere; min-width:0; }
+.row button { flex-shrink:0; padding:6px 10px; font-size:13px; }

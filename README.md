@@ -1,140 +1,119 @@
 # Meet Sales Buddy
 
-A small, private coordination strip for two sales partners on Google Meet. MIT licensed. Each pair brings its own Ably app.
-
-The bundled Ably SDK is separately licensed under Apache 2.0; its license is included in the built extension.
+A private Google Meet strip for your sales team. One permanent room, owned by you; invite each collaborator once. MIT licensed. The bundled Ably SDK is Apache 2.0 licensed.
 
 ```text
 | ● | Claim ` | Alex: Ask about team size. | ˅ | Message partner… ↵ |
 ```
 
-Press **Claim** or tap **backtick** outside a text field while the Meet tab has focus. The strip turns green immediately and returns to normal after five seconds. New text briefly highlights in blue for 1.5 seconds and keeps your draft and focus. Enter sends. The chevron shows only the five newest messages, oldest to newest, and closes the panel after 30 seconds.
+- **Claim** or **backtick** outside a text field turns the strip green immediately, then returns to neutral after five seconds. Claim cancellation is excluded.
+- Enter sends a message. New text highlights gently for 1.5 seconds, without changing your focus or draft. Your own messages also appear. “Sent” means Ably accepted it; recipient/read receipts aren't shown. Failed sends restore the draft.
+- The chevron opens the latest five messages, oldest first, and closes after 30 seconds.
+- The dot is green while connected and at least one **other member** is present in this Meet conversation. Your own extra tabs don't count. Claims are disabled when nobody else is present; an unacknowledged claim reports an error after four seconds.
 
-The dot is green only while both the connection and partner presence are available. Red means the partner isn't available or the connection is down; hover for details and click to open settings. Claims are disabled without a partner. “Sent” means Ably accepted a message; “Delivered” means your partner's extension acknowledged it. Failed sends restore the draft. Claims that aren't acknowledged within four seconds show an error, and offline claims aren't queued for later.
+## Your user flow
+
+```text
+Owner: Set up my room once → name + service URL + owner setup key
+  → Create invite → copy code → send privately to one person
+  → manage unused invites and room members in settings
+Guest: Join with invite → name + complete code → membership saved
+Next calls: open the same Meet URL → connect automatically
+```
+
+The room and memberships have **no automatic expiry**. Each invite is single-use and valid until used or revoked. Used invites cannot admit another person. Revoking an unused invite doesn't remove existing members; **Remove** revokes a member's access. If Ably's live cutoff fails, settings shows **Retry cutoff**. Renewal is denied immediately; an already issued token can last up to one hour until cutoff succeeds.
+
+Removing setup from a browser doesn't delete the room or revoke that browser's membership. The owner can recover the same room with the setup key. A guest who loses their saved credential needs a new invite. Names are entered during setup, not taken from Google.
 
 ## Build and install
 
-Requires Node.js 22+ and Chrome 120+.
+Requires Node.js **22.13+** and Chrome **120+**.
 
 ```sh
 npm ci
 npm run build
 ```
 
-Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the `extension/` folder. Repeat on your partner's computer. Open the extension's toolbar icon for setup. Rebuild and reload the extension after code changes.
+Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this checkout's `extension/` folder. Do the same for collaborators. Open the extension toolbar icon for settings. Rebuild and reload after updates.
 
-If an agent's browser tool blocks Chrome internal pages or extension installation, the owner must perform those steps. The agent can prepare the built folder and private setup details locally; it must respect its tool's restrictions.
+Browser automation tools may block Chrome internal pages. If so, the owner must install/reload manually; agents must respect the restriction. A zip distribution should contain only the built `extension/` folder, never `.env` or private setup files.
 
-## One-time Ably setup (one of you)
+The strip is capped at 720 × 38 pixels and leaves space for Meet's header at laptop/desktop widths. In windows 960 pixels wide or smaller, it sits below the header instead. Long latest messages are truncated visually; open history to read them fully.
 
-1. Create an app in your [Ably dashboard](https://ably.com/dashboard). Create an API key with **publish, subscribe, presence, and history** permissions, restricted to `sales-buddy:*` channels.
-2. Under **Rules**, create a rule with match expression `sales-buddy:*` and enable **Persist all messages**. Message history after a page reload or connection interruption follows your Ably account's retention; messages are not archived elsewhere.
-3. Copy `auth/.env.example` to `.env` in the repo root. Set your full `ABLY_API_KEY`, a random `SESSION_SECRET`, and a different random `SETUP_KEY`. Generate each secret separately:
+## Chrome Web Store preparation
 
-   ```sh
-   node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))'
-   ```
+Run `npm run store:prepare` to build `artifacts/chrome-store/meet-sales-buddy-store-0.2.1.zip`, icons, listing screenshots and public copy. The ZIP has its manifest at the root and excludes backend code, secrets and private setup files. See [store/README.md](store/README.md) for the submission checklist and [store/listing.md](store/listing.md) for permission/data disclosures.
 
-4. Start the included token service:
+The privacy policy is generated from `store/privacy.template.html` using the confirmed public publisher details in `store/publisher.json`. The existing Worker serves it at `/privacy`, independently of access-service authentication. Review the copy before submission. Reviewer instructions are prepared, but working reviewer access is intentionally not provisioned yet. The preparation script does not upload or submit anything to the store.
 
-   ```sh
-   node --env-file=.env auth/server.js
-   ```
+## Infrastructure setup
 
-5. For two laptops, deploy the token service to **Cloudflare Workers**, using the steps below. The local default, `http://localhost:8787`, is for development on one computer; your co-founder cannot reach your localhost. A conventional Node host also works: start `npm run auth`, set `AUTH_HOST=0.0.0.0`, and use the host's `PORT` (or `AUTH_PORT`). No database is needed.
-6. Open extension settings, choose **Create pairing**, and enter your name, token-service URL, and setup key. The extension asks for access only to that service's origin. Copy the private invite to your co-founder.
-7. Your co-founder chooses **Join with invite**, enters their name, and pastes it. They do not need an Ably account or setup key.
+For this installation, the service URL is `https://meet-sales-buddy-tokens.jain31201522.workers.dev`. The owner setup key is in the protected local `artifacts/extension-setup.txt`. Collaborators only need their invite and the extension.
 
-Invites expire after 24 hours. Established pairings are remembered across browser restarts and future calls. Names come from setup, not Google. The creator can generate a fresh invite in settings if needed. The Ably app, token service, and pairing are one-time setup; tokens renew automatically while the service is available.
-
-## Cloudflare deployment
-
-The included Worker reuses the Node token server through Cloudflare's [Node HTTP adapter](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/). Ably continues to relay all messages. The token service fits typical two-person use well within the [Workers Free request allowance](https://developers.cloudflare.com/workers/platform/pricing/); select the Free plan and do not enable a paid upgrade for this setup.
-
-1. Authenticate Wrangler with your Cloudflare account:
+1. In the [Ably dashboard](https://ably.com/dashboard), use the dedicated app/key. Grant **publish, subscribe, presence, history**, restricted to `sales-buddy:*`. Enable **revocable tokens** before issuing tokens; see [Ably's revocation requirements](https://ably.com/docs/auth/revocation). Keep the Root key out of this app.
+2. Under Rules, enable **Persist all messages** for `sales-buddy:*`. History follows Ably's retention; no separate message archive is stored.
+3. For a new installation only, copy `auth/.env.example` to root `.env`. Set `ABLY_API_KEY`, stable `SESSION_SECRET`, and a separate stable `SETUP_KEY`. Generate each secret separately with `node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))'`. Protect `.env` with owner-only permissions. Preserve existing secrets when updating.
+4. Authenticate Cloudflare Wrangler with the narrow scopes needed for Workers and D1:
 
    ```sh
    npx wrangler whoami
-   # Only if not authenticated:
-   npx wrangler login --scopes account:read user:read workers_scripts:write
+   npx wrangler login --scopes account:read user:read workers_scripts:write d1:write
+   npx wrangler d1 list
    ```
 
-2. If you belong to multiple accounts, select the intended account by setting `CLOUDFLARE_ACCOUNT_ID` in your shell. Review the Worker name in `wrangler.jsonc`. Reuse an existing Worker for this installation; don't overwrite a Worker belonging to another project.
-3. Deploy the service:
+5. Reuse the installation's existing Worker and D1 database. For a fresh install, create a dedicated database with `npx wrangler d1 create meet-sales-buddy-room`. In `wrangler.jsonc`, bind it as `DB`, with its real `database_id`, `database_name`, and `migrations_dir: "auth/migrations"`. Never bind an unrelated database.
+6. Apply the schema, then deploy:
 
    ```sh
+   npx wrangler d1 migrations apply meet-sales-buddy-room --remote
    npm run auth:deploy
    ```
 
-   Its initial `/health` returns HTTP 503 until the secrets are configured. This is expected.
+7. For a fresh Worker, set `ABLY_API_KEY`, `SESSION_SECRET`, and `SETUP_KEY` with `npx wrangler secret put NAME`. Existing deployments retain their secrets; don't rotate them. Keep values out of command arguments, logs, screenshots, chat and Git. `/health` returns 503 until both secrets and the migrated database are available.
+8. Use the returned HTTPS URL in owner settings. Keep the Free plan; do not enable a paid upgrade. Usage consumes [Workers](https://developers.cloudflare.com/workers/platform/pricing/), [D1](https://developers.cloudflare.com/d1/platform/pricing/), and Ably allowances.
 
-4. Add the three secrets from your local `.env` to that Worker:
+## Existing pairing upgrade
 
-   ```sh
-   npx wrangler secret put ABLY_API_KEY
-   npx wrangler secret put SESSION_SECRET
-   npx wrangler secret put SETUP_KEY
-   ```
+After upgrading the server and extension, **the existing owner should open settings first**. Their saved owner credential adopts that old pairing as the permanent room. The existing guest can then upgrade automatically. Further collaborators receive new single-use invites. Other old pairings aren't merged into this room.
 
-   Each command prompts for the value. For agent-driven setup, Wrangler also supports `secret bulk` with an owner-readable temporary JSON file containing exactly these three fields; keep it under ignored `artifacts/` and remove that temporary file afterwards. Never put secrets in `wrangler.jsonc`, command arguments, screenshots, chat, Git, or the extension. Keep the local `.env` protected and preserve `SESSION_SECRET` and `SETUP_KEY` when redeploying.
+Keep the original `SESSION_SECRET`, `SETUP_KEY`, and Ably key. Do not create a synthetic production owner to test deployment: the first successful owner setup establishes the single room. If no pairing was saved, set up using your real name and existing owner setup key.
 
-5. Save the returned HTTPS `workers.dev` URL as `TOKEN_SERVICE_URL` in your local `.env`, then verify:
-
-   ```sh
-   npm run verify:relay
-   ```
-
-   This creates a separate test pairing and verifies the hosted token service, real Ably authentication, partner presence, text and claim delivery, and history. It uses two clients on the current computer; it doesn't prove two-laptop latency. Test traffic stays in its own channel and expires under your Ably retention settings.
-
-6. Use that HTTPS URL and your `SETUP_KEY` in **Create pairing** in the extension. Your co-founder uses only the resulting invite.
-
-## Setup with an AI agent
-
-Give your agent this instruction:
-
-> Read README.md and set up Meet Sales Buddy using my Ably app and Cloudflare Workers Free account. Build the extension, configure the dedicated Ably key and persistence rule, deploy the included token service, run the live relay check, and help me install and pair the extension. Reuse my existing setup and preserve its secrets. Ask me to complete account login or permissions when your tools require it.
-
-The agent needs this repository, Node.js 22+, browser or CLI access to the relevant accounts, and access to the local secrets file. A README alone cannot supply account access. Account sign-in, required authorization prompts, and extension installation may need the owner to participate.
-
-Suggested order:
-
-1. Read applicable repository instructions. Check for an existing `.env`, Worker, extension pairing, and `artifacts/setup.json` before creating replacements. Don't regenerate secrets or pairing credentials on every run.
-2. Run `npm ci`, `npm run build`, `npm test`, and `npm run check`. The directory loaded in Chrome must be the built `extension/` folder from the working checkout.
-3. Verify the dedicated Ably key has **only** publish, subscribe, presence, and history, with **Only channels** set to `sales-buddy:*`. Verify the **Persist all messages** rule. Do not use the app's Root key.
-4. Store the full key and stable random secrets in an ignored, owner-readable `.env`. Keep values out of command output. If a deployed setup exists but its original secrets are missing locally, obtain them from the owner rather than replacing them.
-5. Follow the Cloudflare deployment steps. Deploy and verify before configuring the extension. Keep free-account limits; don't add a database, another relay, paid plan, or domain unless requested.
-6. Run `npm run verify:relay`. Then install in the owner's intended Chrome profile, create the pairing once, and provide the invite locally for the owner to send. A saved profile alone is insufficient: open Meet and confirm that Ably connects without an authentication error. The partner dot turns green after the co-founder joins and opens Meet.
-7. Record the app, Worker name, public endpoint, installation path, and verification result in ignored `artifacts/setup.json`, without keys, tokens, pairing credentials, or invites. Report remaining owner/co-founder steps accurately.
-
-## System flow and privacy
+## System responsibilities
 
 ```text
-Extension settings → your token service → signed pairing credential
-Meet extension → your token service → 1-hour, channel-scoped Ably token
-Your Meet strip ⇄ Ably ⇄ partner's Meet strip
+Settings → Cloudflare Worker → D1: one room, members, hashed invites
+Meet background → Worker → D1 access check → 1-hour scoped Ably token
+Meet strip ⇄ Ably ⇄ all members on the same Meet URL
 ```
 
-The full Ably API key remains on your token service. The setup key is never saved in the extension. A signed, long-lived pairing credential is stored in Chrome's local extension storage, restricted to trusted extension contexts. Meet content scripts receive only profile/channel metadata and short-lived Ably tokens. Invites are bearer secrets: anyone holding one can join as the guest. There are two logical identities per pair; multiple tabs or connections using the same identity are allowed.
+D1 owns access state. Chrome stores a permanent signed member credential in trusted extension storage; content scripts receive profile metadata and short-lived Ably tokens. The full Ably key stays server-side. Invite codes are bearer secrets, and stored only as hashes on the server. Codes are displayed only when created.
 
-Use a stable `SESSION_SECRET` across deployments. Rotating it revokes all pairing credentials and invites from that service; already issued Ably tokens can remain valid for up to one hour. Removing a pairing only removes it from that browser. It does not revoke credentials copied elsewhere. This MVP doesn't include per-user revocation or an administration dashboard.
+Ably owns message relay, history, presence, and reconnect recovery. Messages/claims don't pass through the Worker or D1. Removal marks membership revoked first, then invalidates that member's Ably tokens. Tokens renew automatically; their one-hour expiry doesn't require repeating setup. Revocable tokens can add a small cost on initial connection and authentication, not an extra app-server round trip per message.
 
-Messages use encrypted transport, but are **not end-to-end encrypted**. Ably can process and retain them. Ably manages message relay, presence, ordering, and connection recovery. Presence can take time to reflect an abrupt network loss; claim acknowledgements catch missing recipients. Recent retained text is loaded on connection and on a reconnect without continuity. Past claims never replay from history.
+The permanent room is independent of Meet, but **each Meet URL has its own conversation channel**. All members must open the same Meet URL. `lookup/...` and a resolved call-code URL are different channels, even if Google sends them into the same underlying meeting. Presence may take time to reflect abrupt network loss. Simultaneous claims converge using server timestamps and a deterministic tie-break; old claims never replay from history.
 
-### Screen sharing
+Messages use encrypted transport, **not end-to-end encryption**; Ably can process and retain them. Rotating `SESSION_SECRET` invalidates saved memberships; already issued Ably tokens require revocation or expiry. Never delete/reset the access database as a routine upgrade.
 
-This version is **Option 1**, an injected strip on Meet. It will appear if you share that Meet tab/window or your entire desktop with Meet visible. Keep Meet in a separate window and share only the demo tab/window. It doesn't follow you onto other tabs, hide automatically, or provide capture protection. The macOS floating/capture-protected option (Option 3) is deferred until this version is approved and tested.
-
-## Preview and validation
+## Local development and validation
 
 ```sh
-npm run preview
-# Open http://127.0.0.1:4173 — a local interaction mock, no Ably account needed.
+npm run auth          # localhost:8787, persistent SQLite in .wrangler/room.sqlite
+npm run preview       # localhost:4173, interaction demo without Ably
 npm test
+npm run build
 npm run check
-npx playwright install chromium
 npm run test:browser
+npm run verify:relay
 ```
 
-Unit tests cover private pairing/token scopes, invite expiry, persistent credentials, delivery states, disconnects, claim acknowledgements, stale claims, history recovery, shortcut guards, and timers. Browser tests exercise the strip, typing, draft preservation, history, and layout. A real two-laptop Ably test requires your configured service/app; mocked tests don't prove live network latency.
+The relay check uses your Ably key with **an isolated in-memory access database**, three temporary identities and a private test channel. It checks live group relay, presence, claims, history, call isolation and revocation. It never initializes or changes the hosted room. A single-machine latency sample doesn't establish two-laptop performance. Production health can be checked separately at `SERVICE_URL/health`.
 
-The repo includes deployment commands; it doesn't deploy automatically on installation, publish to the Chrome Web Store, or implement Option 3.
+Unit/browser tests cover singleton recovery, permanent membership, invite races/reuse/revocation, permissions, member cutoff/retry, legacy migration, group presence, Sent/Failed states, claim timing/order, history pagination, focus preservation and shortcut guards.
+
+## AI agent setup/update runbook
+
+Read applicable repository instructions first. Inspect the existing `.env`, `wrangler.jsonc`, deployed Worker/database and `artifacts/setup.json` before provisioning replacements. Build and validate, configure the dedicated Ably key, apply migrations, deploy to the same Worker, and run the isolated relay check. Preserve secrets and production access state. Never test by creating a fake production owner. Record only non-secret deployment/validation metadata; provide setup keys privately in protected local files. Account login, browser permissions and extension installation can require owner participation.
+
+## Screen sharing
+
+This is **Option 1**, a strip inside Meet. It appears if you share that Meet tab/window or a full desktop with Meet visible. Keep Meet in a separate window and share only the demo tab/window. It doesn't follow other tabs or provide capture protection. The macOS floating/capture-protected Option 3 remains deferred until this version is approved.
